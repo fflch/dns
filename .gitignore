@@ -28,3 +28,8 @@ Thumbs.db
 
 # uspdev-theme folder
 public/vendor
+
+# Claude Code
+/.claude/
+/CLAUDE.md
+/.mcp.json
