@@ -23,4 +23,5 @@ Route::middleware('auth')->group(function () {
     Route::get('/admin/todos', [AdminController::class, 'todos'])->name('admin.todos');
     Route::patch('/admin/{dominio}/aprovar', [AdminController::class, 'aprovar'])->name('admin.aprovar');
     Route::patch('/admin/{dominio}/rejeitar', [AdminController::class, 'rejeitar'])->name('admin.rejeitar');
+    Route::delete('/admin/{dominio}', [AdminController::class, 'destroy'])->name('admin.destroy');
 });

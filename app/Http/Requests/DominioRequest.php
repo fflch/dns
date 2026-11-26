@@ -70,8 +70,8 @@ class DominioRequest extends FormRequest
                     return;
                 }
 
-                if (Dominio::nomeReservado($nome)) {
-                    $validator->errors()->add('nome', "O domínio {$fqdn} já foi solicitado e está pendente ou aprovado.");
+                if (Dominio::nomeJaSolicitado($nome)) {
+                    $validator->errors()->add('nome', "O domínio {$fqdn} já tem uma solicitação neste sistema. Para pedi-lo de novo, fale com os administradores.");
 
                     return;
                 }

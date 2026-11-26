@@ -4,11 +4,11 @@ namespace App\Models;
 
 use App\Mail\DominioMail;
 use Database\Factories\DominioFactory;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Mail\Mailable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 use OwenIt\Auditing\Contracts\Auditable;
@@ -57,16 +57,6 @@ class Dominio extends Model implements Auditable
     }
 
     /**
-     * Pendentes ou aprovados: o nome fica reservado e não pode ser pedido de novo
-     *
-     * @param  Builder<Dominio>  $query
-     */
-    public function scopeAtivos(Builder $query): void
-    {
-        $query->currentStatus(['pendente', 'aprovado']);
-    }
-
-    /**
      * Nome completo, ex.: abc.fflch.usp.br
      */
     public function fqdn(): string
@@ -88,14 +78,12 @@ class Dominio extends Model implements Auditable
     }
 
     /**
-     * Outro pedido pendente ou aprovado com o mesmo nome
+     * Já existe solicitação com esse nome, em qualquer status (pendente, aprovado ou rejeitado).
+     * O nome só fica livre de novo se um admin excluir a solicitação.
      */
-    public static function nomeReservado(string $nome, ?int $excetoId = null): bool
+    public static function nomeJaSolicitado(string $nome): bool
     {
-        return static::ativos()
-            ->where('nome', $nome)
-            ->when($excetoId, fn ($query) => $query->whereKeyNot($excetoId))
-            ->exists();
+        return static::where('nome', $nome)->exists();
     }
 
     /**
@@ -136,6 +124,14 @@ class Dominio extends Model implements Auditable
      */
     public function notificarEnvolvidos(string $acao, string $quem, ?string $mensagem = null, bool $revogado = false): void
     {
+        $this->enviarParaEnvolvidos(new DominioMail($this, $acao, $quem, $mensagem, $revogado));
+    }
+
+    /**
+     * Envia o e-mail ao solicitante, com todos os admins em cópia
+     */
+    public function enviarParaEnvolvidos(Mailable $mail): void
+    {
         $emails = collect([$this->user?->email])
             ->merge(static::admins()->pluck('email'))
             ->filter()
@@ -149,7 +145,7 @@ class Dominio extends Model implements Auditable
 
         Mail::to($emails->first())
             ->cc($emails->slice(1)->all())
-            ->queue(new DominioMail($this, $acao, $quem, $mensagem, $revogado));
+            ->queue($mail);
     }
 
     /**

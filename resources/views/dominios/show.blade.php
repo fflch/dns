@@ -38,6 +38,7 @@
             @include('partials._decisao')
         </div>
     </div>
+    @include('partials._excluir')
 @endcan
 
 <h5 class="mt-4">Histórico</h5>

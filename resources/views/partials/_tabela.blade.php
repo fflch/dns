@@ -32,7 +32,10 @@
                         <span class="text-muted">-</span>
                     @endif
                 </td>
-                <td><a href="{{ route('dominios.show', $dominio) }}" class="btn btn-outline-primary btn-sm">Abrir</a></td>
+                <td class="text-nowrap">
+                    <a href="{{ route('dominios.show', $dominio) }}" class="btn btn-outline-primary btn-sm">Abrir</a>
+                    @include('partials._excluir')
+                </td>
             </tr>
         @empty
             <tr>

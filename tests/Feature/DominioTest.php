@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\DominioExcluidoMail;
 use App\Mail\DominioMail;
 use App\Models\Dominio;
 use App\Models\User;
@@ -150,17 +151,50 @@ class DominioTest extends TestCase
         $this->assertSame(0, Dominio::count());
     }
 
-    public function test_nome_pendente_ou_aprovado_nao_pode_ser_pedido_de_novo_mas_rejeitado_pode(): void
+    public function test_nome_com_solicitacao_em_qualquer_status_nao_aceita_novo_pedido(): void
     {
         $servidor = $this->usuario('Servidor');
         Dominio::factory()->comStatus('pendente')->create(['nome' => 'pendente']);
         Dominio::factory()->comStatus('aprovado')->create(['nome' => 'aprovado']);
         Dominio::factory()->comStatus('rejeitado', 'não')->create(['nome' => 'rejeitado']);
 
-        foreach (['pendente', 'aprovado'] as $nome) {
-            $this->actingAs($servidor)->post('/dominios', $this->pedido(['nome' => $nome]))->assertSessionHasErrors('nome');
+        foreach (['pendente', 'aprovado', 'rejeitado'] as $nome) {
+            $this->actingAs($servidor)->post('/dominios', $this->pedido(['nome' => $nome]))
+                ->assertSessionHasErrors(['nome' => "O domínio {$nome}.fflch.usp.br já tem uma solicitação neste sistema. Para pedi-lo de novo, fale com os administradores."]);
         }
-        $this->actingAs($servidor)->post('/dominios', $this->pedido(['nome' => 'rejeitado']))->assertSessionHasNoErrors();
+        $this->assertSame(3, Dominio::count());
+    }
+
+    public function test_admin_exclui_em_qualquer_status_avisa_envolvidos_e_libera_o_nome(): void
+    {
+        $admin = $this->usuario('admin');
+        $servidor = $this->usuario('Servidor');
+
+        foreach (['pendente', 'aprovado', 'rejeitado'] as $status) {
+            $dominio = Dominio::factory()->comStatus($status, 'motivo')->create(['nome' => "excluir-{$status}", 'user_id' => $servidor->id]);
+
+            $this->actingAs($admin)->delete("/admin/{$dominio->id}", ['mensagem' => 'Não é mais usado'])
+                ->assertRedirect('/admin/todos');
+
+            $this->assertModelMissing($dominio);
+            $this->assertSame(0, $dominio->statuses()->count());
+            Mail::assertQueued(DominioExcluidoMail::class, fn (DominioExcluidoMail $mail) => $mail->fqdn == "excluir-{$status}.fflch.usp.br"
+                && $mail->status == $status && $mail->mensagem == 'Não é mais usado'
+                && $mail->hasTo($servidor->email) && $mail->hasCc($admin->email));
+        }
+
+        $this->get('/domains')->assertDontSee('excluir-aprovado', false);
+        $this->actingAs($servidor)->post('/dominios', $this->pedido(['nome' => 'excluir-aprovado']))->assertSessionHasNoErrors();
+    }
+
+    public function test_so_admin_exclui(): void
+    {
+        $servidor = $this->usuario('Servidor');
+        $dominio = Dominio::factory()->comStatus('pendente')->create(['user_id' => $servidor->id]);
+
+        $this->actingAs($servidor)->delete("/admin/{$dominio->id}")->assertForbidden();
+
+        $this->assertModelExists($dominio);
     }
 
     public function test_admin_aprova_sem_explicacao_e_todos_recebem_email(): void

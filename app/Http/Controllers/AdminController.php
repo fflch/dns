@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\SitesIndisponivelException;
+use App\Mail\DominioExcluidoMail;
 use App\Models\Dominio;
 use App\Services\SitesFflch;
 use Illuminate\Database\Eloquent\Builder;
@@ -59,10 +60,6 @@ class AdminController extends Controller
             'mensagem' => 'nullable|max:1000',
         ]);
 
-        if (Dominio::nomeReservado($dominio->nome, $dominio->id)) {
-            return back()->withInput()->withErrors(['mensagem' => "Já existe outra solicitação pendente ou aprovada para {$dominio->fqdn()}."]);
-        }
-
         try {
             if ($sites->emUso($dominio->fqdn())) {
                 return back()->withInput()->withErrors(['mensagem' => "{$dominio->fqdn()} já está em uso em sites.fflch.usp.br. Rejeite a solicitação."]);
@@ -109,6 +106,35 @@ class AdminController extends Controller
         return back()->with('alert-info', $revogado
             ? "Aprovação de {$dominio->fqdn()} revogada: o domínio deixou de ser publicado."
             : "{$dominio->fqdn()} rejeitado.");
+    }
+
+    /**
+     * Exclui a solicitação, em qualquer status (explicação opcional). O nome fica livre para novo pedido.
+     * O e-mail é montado antes de excluir; a exclusão fica na auditoria.
+     */
+    public function destroy(Request $request, Dominio $dominio): RedirectResponse
+    {
+        Gate::authorize('admin');
+
+        $request->validate([
+            'mensagem' => 'nullable|max:1000',
+        ]);
+
+        $dominio->enviarParaEnvolvidos(new DominioExcluidoMail(
+            fqdn: $dominio->fqdn(),
+            ip: $dominio->ip,
+            status: $dominio->status,
+            solicitante: $dominio->user?->name,
+            motivo: $dominio->motivo,
+            quem: $request->user()->name,
+            mensagem: $request->mensagem,
+        ));
+
+        $fqdn = $dominio->fqdn();
+        $dominio->statuses()->delete();
+        $dominio->delete();
+
+        return redirect()->route('admin.todos')->with('alert-info', "Solicitação de {$fqdn} excluída. O nome está livre para nova solicitação.");
     }
 
     /**
