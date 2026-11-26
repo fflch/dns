@@ -31,8 +31,31 @@
     <div class="alert alert-warning">Aguardando avaliação de um administrador.</div>
 @endif
 
+@include('partials._erros')
+
+@can('trocarIp', $dominio)
+    <div class="card mb-3" style="max-width: 600px;">
+        <div class="card-body">
+            <form method="POST" action="{{ route('dominios.ip', $dominio) }}">
+                @csrf
+                @method('PATCH')
+                <label for="ip">Novo IP de apontamento</label>
+                <input type="text" name="ip" id="ip" value="{{ old('ip') }}" class="form-control mb-2" placeholder="{{ $dominio->ip }}" required>
+                <textarea name="mensagem" rows="2" class="form-control mb-2" placeholder="Mensagem (opcional): por que o IP mudou">{{ old('mensagem') }}</textarea>
+                @php($voltaPendente = $dominio->status == 'aprovado' && Gate::denies('admin'))
+                <button type="submit" class="btn btn-outline-primary"
+                    @if($voltaPendente) onclick="return confirm('O domínio já está aprovado. Ao trocar o IP ele volta para análise e deixa de ser publicado até nova aprovação. Continuar?');" @endif>
+                    Trocar IP
+                </button>
+            </form>
+            @if($voltaPendente)
+                <small class="text-muted">Como o domínio já está aprovado, trocar o IP faz ele voltar para análise.</small>
+            @endif
+        </div>
+    </div>
+@endcan
+
 @can('admin')
-    @include('partials._erros')
     <div class="card mb-3" style="max-width: 600px;">
         <div class="card-body">
             @include('partials._decisao')

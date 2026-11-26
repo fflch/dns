@@ -17,6 +17,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/dominios/create', [DominioController::class, 'create'])->name('dominios.create');
     Route::post('/dominios', [DominioController::class, 'store'])->name('dominios.store');
     Route::get('/dominios/{dominio}', [DominioController::class, 'show'])->name('dominios.show');
+    // Solicitante (pendente/aprovado) ou admin (sempre)
+    Route::patch('/dominios/{dominio}/ip', [DominioController::class, 'trocarIp'])->name('dominios.ip');
 
     // Admin (SENHAUNICA_ADMINS)
     Route::get('/admin/pendentes', [AdminController::class, 'pendentes'])->name('admin.pendentes');

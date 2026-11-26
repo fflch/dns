@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\Dominio;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Date;
@@ -36,6 +37,13 @@ class AppServiceProvider extends ServiceProvider
         // Quem pode pedir domínio: servidores e docentes da unidade (gates do senhaunica-socialite)
         Gate::define('solicitante', function ($user) {
             return Gate::forUser($user)->any(['senhaunica.servidor', 'senhaunica.docente']);
+        });
+
+        // Quem pode trocar o IP: admin sempre; o solicitante enquanto pendente ou aprovado
+        // (se trocar depois de aprovado, volta para pendente: ver DominioController@trocarIp)
+        Gate::define('trocarIp', function ($user, Dominio $dominio) {
+            return Gate::forUser($user)->allows('admin')
+                || ($dominio->user_id == $user->id && in_array($dominio->status, ['pendente', 'aprovado']));
         });
 
         // Toda mudança de status fica na auditoria, com o usuário que fez a mudança

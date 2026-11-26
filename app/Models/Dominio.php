@@ -122,9 +122,15 @@ class Dominio extends Model implements Auditable
     /**
      * E-mail para todos os envolvidos: o solicitante e os admins (inclui quem fez a ação)
      */
-    public function notificarEnvolvidos(string $acao, string $quem, ?string $mensagem = null, bool $revogado = false): void
-    {
-        $this->enviarParaEnvolvidos(new DominioMail($this, $acao, $quem, $mensagem, $revogado));
+    public function notificarEnvolvidos(
+        string $acao,
+        string $quem,
+        ?string $mensagem = null,
+        bool $revogado = false,
+        ?string $ipAnterior = null,
+        bool $voltouPendente = false,
+    ): void {
+        $this->enviarParaEnvolvidos(new DominioMail($this, $acao, $quem, $mensagem, $revogado, $ipAnterior, $voltouPendente));
     }
 
     /**
@@ -166,9 +172,15 @@ class Dominio extends Model implements Auditable
                 $acao = 'Solicitação criada';
                 $detalhe = ($audit->new_values['nome'] ?? '').' → '.($audit->new_values['ip'] ?? '')
                     .'. Motivo: '.($audit->new_values['motivo'] ?? '');
-            } elseif ($audit->event == 'status' && $depois == 'pendente') {
+            } elseif ($audit->event == 'status' && $depois == 'pendente' && $antes === null) {
                 // Status inicial, logo após a criação: não precisa aparecer
                 continue;
+            } elseif ($audit->event == 'status' && $depois == 'pendente') {
+                $acao = 'Voltou para análise';
+            } elseif (in_array($audit->event, ['ip', 'updated']) && isset($audit->new_values['ip'])) {
+                $acao = 'IP alterado';
+                $detalhe = ($audit->old_values['ip'] ?? '?').' → '.$audit->new_values['ip']
+                    .($detalhe ? ". Mensagem: {$detalhe}" : '');
             } elseif ($audit->event == 'status' && $depois == 'aprovado') {
                 $acao = $antes == 'rejeitado' ? 'Aprovado após rejeição' : 'Aprovado';
             } elseif ($audit->event == 'status' && $depois == 'rejeitado') {

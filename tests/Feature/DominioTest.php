@@ -303,4 +303,77 @@ class DominioTest extends TestCase
         $this->actingAs($admin)->get('/dominios')->assertOk()->assertSee($pendente->fqdn());
         $this->actingAs($admin)->get('/dominios/create')->assertOk()->assertSee('.fflch.usp.br');
     }
+
+    public function test_solicitante_troca_ip_enquanto_pendente_com_mensagem_e_todos_recebem_email(): void
+    {
+        $admin = $this->usuario('admin');
+        $servidor = $this->usuario('Servidor');
+        $dominio = Dominio::factory()->comStatus('pendente')->create(['user_id' => $servidor->id, 'ip' => '200.144.244.1']);
+
+        $this->actingAs($servidor)->patch("/dominios/{$dominio->id}/ip", ['ip' => '200.144.244.2', 'mensagem' => 'Servidor novo'])
+            ->assertSessionHasNoErrors();
+
+        $dominio->refresh();
+        $this->assertSame('200.144.244.2', $dominio->ip);
+        $this->assertSame('pendente', $dominio->status);
+        Mail::assertQueued(DominioMail::class, fn (DominioMail $mail) => $mail->acao == 'ip alterado'
+            && $mail->ipAnterior == '200.144.244.1' && $mail->mensagem == 'Servidor novo' && ! $mail->voltouPendente
+            && $mail->hasTo($servidor->email) && $mail->hasCc($admin->email));
+
+        $this->actingAs($servidor)->get("/dominios/{$dominio->id}")
+            ->assertSee('IP alterado')->assertSee('200.144.244.1 → 200.144.244.2. Mensagem: Servidor novo');
+    }
+
+    public function test_solicitante_que_troca_ip_de_aprovado_faz_voltar_para_pendente(): void
+    {
+        $servidor = $this->usuario('Servidor');
+        $dominio = Dominio::factory()->comStatus('aprovado')->create(['user_id' => $servidor->id, 'nome' => 'trocado']);
+
+        $this->actingAs($servidor)->patch("/dominios/{$dominio->id}/ip", ['ip' => '200.144.244.99'])->assertSessionHasNoErrors();
+
+        $this->assertSame('pendente', $dominio->fresh()->status);
+        $this->get('/domains')->assertDontSee('trocado.fflch.usp.br', false);
+        Mail::assertQueued(DominioMail::class, fn (DominioMail $mail) => $mail->acao == 'ip alterado' && $mail->voltouPendente);
+    }
+
+    public function test_admin_troca_ip_a_qualquer_momento_sem_mudar_status(): void
+    {
+        $admin = $this->usuario('admin');
+
+        foreach (['pendente', 'aprovado', 'rejeitado'] as $status) {
+            $dominio = Dominio::factory()->comStatus($status, 'motivo')->create();
+
+            $this->actingAs($admin)->patch("/dominios/{$dominio->id}/ip", ['ip' => '200.144.255.10'])->assertSessionHasNoErrors();
+
+            $dominio->refresh();
+            $this->assertSame('200.144.255.10', $dominio->ip);
+            $this->assertSame($status, $dominio->status);
+        }
+
+        $this->get('/domains')->assertSee('IN A 200.144.255.10', false);
+    }
+
+    public function test_solicitante_nao_troca_ip_de_rejeitado_nem_de_outra_pessoa(): void
+    {
+        $servidor = $this->usuario('Servidor');
+        $rejeitado = Dominio::factory()->comStatus('rejeitado', 'não')->create(['user_id' => $servidor->id, 'ip' => '200.144.244.1']);
+        $deOutro = Dominio::factory()->comStatus('pendente')->create(['ip' => '200.144.244.1']);
+
+        $this->actingAs($servidor)->patch("/dominios/{$rejeitado->id}/ip", ['ip' => '200.144.244.2'])->assertForbidden();
+        $this->actingAs($servidor)->patch("/dominios/{$deOutro->id}/ip", ['ip' => '200.144.244.2'])->assertForbidden();
+
+        $this->assertSame('200.144.244.1', $rejeitado->fresh()->ip);
+        $this->assertSame('200.144.244.1', $deOutro->fresh()->ip);
+    }
+
+    public function test_troca_de_ip_exige_ipv4_diferente_do_atual(): void
+    {
+        $servidor = $this->usuario('Servidor');
+        $dominio = Dominio::factory()->comStatus('pendente')->create(['user_id' => $servidor->id, 'ip' => '200.144.244.1']);
+
+        foreach (['200.144.244.1', 'abc', ''] as $ip) {
+            $this->actingAs($servidor)->patch("/dominios/{$dominio->id}/ip", ['ip' => $ip])->assertSessionHasErrors('ip');
+        }
+        Mail::assertNothingQueued();
+    }
 }

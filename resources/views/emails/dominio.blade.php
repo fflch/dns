@@ -1,6 +1,12 @@
 <p>
     @if($acao == 'solicitado')
         <b>{{ $quem }}</b> solicitou o domínio <b>{{ $dominio->fqdn() }}</b>.
+    @elseif($acao == 'ip alterado')
+        <b>{{ $quem }}</b> alterou o IP de apontamento do domínio <b>{{ $dominio->fqdn() }}</b>
+        de <b>{{ $ipAnterior }}</b> para <b>{{ $dominio->ip }}</b>.
+        @if($voltouPendente)
+            Como o domínio já estava aprovado, ele <b>voltou para análise</b> e deixou de ser publicado até um administrador aprovar de novo.
+        @endif
     @elseif($revogado)
         A aprovação do domínio <b>{{ $dominio->fqdn() }}</b> foi <b>revogada</b> por <b>{{ $quem }}</b>.
         O domínio deixou de ser publicado.
